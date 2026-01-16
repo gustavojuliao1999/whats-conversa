@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  AGENT
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  SPAM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACT
+  REACTION
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum InstanceStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  QRCODE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatar    String?
+  role      UserRole @default(AGENT)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id])
+
+  assignedConversations Conversation[] @relation("AssignedAgent")
+  sentMessages          Message[]      @relation("SentByUser")
+
+  @@map("users")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users         User[]
+  conversations Conversation[]
+
+  @@map("teams")
+}
+
+model Instance {
+  id             String         @id @default(cuid())
+  name           String         @unique
+  apiKey         String?
+  phoneNumber    String?
+  profileName    String?
+  profilePicture String?
+  status         InstanceStatus @default(DISCONNECTED)
+  qrCode         String?        @db.Text
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  contacts      Contact[]
+  conversations Conversation[]
+  messages      Message[]
+
+  @@map("instances")
+}
+
+model Contact {
+  id           String   @id @default(cuid())
+  remoteJid    String
+  pushName     String?
+  profileName  String?
+  phoneNumber  String?
+  profilePic   String?
+  isGroup      Boolean  @default(false)
+  isMyContact  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  conversations Conversation[]
+  messages      Message[]
+
+  @@unique([instanceId, remoteJid])
+  @@map("contacts")
+}
+
+model Label {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#6366f1")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations ConversationLabel[]
+
+  @@map("labels")
+}
+
+model Conversation {
+  id             String             @id @default(cuid())
+  status         ConversationStatus @default(OPEN)
+  unreadCount    Int                @default(0)
+  lastMessageAt  DateTime?
+  lastMessage    String?
+  isArchived     Boolean            @default(false)
+  priority       Int                @default(0)
+  notes          String?            @db.Text
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  assignedToId String?
+  assignedTo   User?   @relation("AssignedAgent", fields: [assignedToId], references: [id])
+
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id])
+
+  messages Message[]
+  labels   ConversationLabel[]
+
+  @@unique([instanceId, contactId])
+  @@map("conversations")
+}
+
+model ConversationLabel {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  labelId String
+  label   Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([conversationId, labelId])
+  @@map("conversation_labels")
+}
+
+model Message {
+  id              String        @id @default(cuid())
+  messageId       String
+  content         String?       @db.Text
+  type            MessageType   @default(TEXT)
+  status          MessageStatus @default(PENDING)
+  isFromMe        Boolean       @default(false)
+  timestamp       DateTime
+  mediaUrl        String?
+  mediaMimeType   String?
+  mediaFileName   String?
+  quotedMessageId String?
+  reaction        String?
+  isDeleted       Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  sentByUserId String?
+  sentByUser   User?   @relation("SentByUser", fields: [sentByUserId], references: [id])
+
+  @@unique([instanceId, messageId])
+  @@index([conversationId, timestamp])
+  @@map("messages")
+}
