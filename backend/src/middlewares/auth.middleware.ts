@@ -15,15 +15,20 @@ export async function authMiddleware(
 ) {
   try {
     const authHeader = req.headers.authorization;
+    const queryToken = req.query.token as string | undefined;
 
-    if (!authHeader) {
-      return res.status(401).json({ error: 'Token não fornecido' });
+    let token: string | undefined;
+
+    if (authHeader) {
+      const [, headerToken] = authHeader.split(' ');
+      token = headerToken;
+    } else if (queryToken) {
+      // Permitir token via query string para URLs de mídia (img src, audio src, etc)
+      token = queryToken;
     }
 
-    const [, token] = authHeader.split(' ');
-
     if (!token) {
-      return res.status(401).json({ error: 'Token mal formatado' });
+      return res.status(401).json({ error: 'Token não fornecido' });
     }
 
     const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;

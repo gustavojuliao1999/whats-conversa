@@ -1,17 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Play, FileText, Download, Loader2 } from 'lucide-react'
+import { Play, FileText, Download } from 'lucide-react'
 import { messagesApi } from '@/lib/api'
-import { useAuthStore } from '@/lib/store'
 
 interface MediaContentProps {
   messageId: string
   type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'STICKER'
-  mediaUrl?: string
-  mediaMimeType?: string
-  mediaFileName?: string
-  caption?: string
+  mediaUrl?: string | null
+  mediaMimeType?: string | null
+  mediaFileName?: string | null
+  caption?: string | null
 }
 
 export function MediaContent({
@@ -22,66 +20,14 @@ export function MediaContent({
   mediaFileName,
   caption,
 }: MediaContentProps) {
-  const { token } = useAuthStore()
-  const [mediaData, setMediaData] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(false)
-
-  // Check if media URL is encrypted WhatsApp URL
+  // Se não tem mediaUrl ou é URL criptografada do WhatsApp, usar a rota /file
   const isEncryptedUrl = mediaUrl?.includes('mmg.whatsapp.net') || mediaUrl?.includes('.enc')
+  const needsProxy = !mediaUrl || isEncryptedUrl
 
-  useEffect(() => {
-    // If URL is encrypted, fetch the base64
-    if (isEncryptedUrl && token && !mediaData && !loading && !error) {
-      fetchMedia()
-    }
-  }, [isEncryptedUrl, token, messageId])
-
-  const fetchMedia = async () => {
-    if (!token) return
-
-    try {
-      setLoading(true)
-      setError(false)
-      const response = await messagesApi.getMediaBase64(token, messageId)
-
-      // Format as data URL
-      const dataUrl = response.base64.startsWith('data:')
-        ? response.base64
-        : `data:${response.mimetype};base64,${response.base64}`
-
-      setMediaData(dataUrl)
-    } catch (err) {
-      console.error('Error fetching media:', err)
-      setError(true)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const effectiveUrl = mediaData || (!isEncryptedUrl ? mediaUrl : null)
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-4 bg-black/5 rounded-lg min-w-[200px] min-h-[100px]">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (error || (!effectiveUrl && isEncryptedUrl)) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 p-4 bg-black/5 rounded-lg min-w-[200px]">
-        <p className="text-sm text-muted-foreground">Mídia não disponível</p>
-        <button
-          onClick={fetchMedia}
-          className="text-xs text-primary hover:underline"
-        >
-          Tentar novamente
-        </button>
-      </div>
-    )
-  }
+  // URL efetiva: usa a rota /file do backend quando necessário
+  const effectiveUrl = needsProxy && messageId
+    ? messagesApi.getMediaFileUrl(messageId)
+    : mediaUrl || undefined
 
   switch (type) {
     case 'IMAGE':
@@ -138,12 +84,6 @@ export function MediaContent({
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 rounded-lg bg-black/5 p-3 hover:bg-black/10"
-          onClick={(e) => {
-            if (!effectiveUrl) {
-              e.preventDefault()
-              fetchMedia()
-            }
-          }}
         >
           <FileText className="h-8 w-8 text-primary" />
           <div className="min-w-0 flex-1">

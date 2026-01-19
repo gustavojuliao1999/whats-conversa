@@ -73,7 +73,7 @@ router.post('/conversations/:conversationId/messages/media', authMiddleware, mes
 router.post('/conversations/:conversationId/messages/audio', authMiddleware, messageController.sendAudioMessage);
 router.post('/conversations/:conversationId/messages/read', authMiddleware, messageController.markAsRead);
 router.post('/conversations/:conversationId/typing', authMiddleware, messageController.sendTyping);
-router.get('/messages/:messageId/media', authMiddleware, messageController.getMediaBase64);
+router.get('/messages/:messageId/file', messageController.getMediaFile);
 
 // User routes (admin only for most)
 router.get('/users', authMiddleware, userController.listUsers);

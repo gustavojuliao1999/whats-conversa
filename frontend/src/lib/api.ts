@@ -210,11 +210,15 @@ export const messagesApi = {
       method: 'POST',
       token,
     }),
-
   getMediaBase64: (token: string, messageId: string) =>
     fetchApi<{ base64: string; mimetype: string }>(`/messages/${messageId}/media`, {
       token,
     }),
+
+  getMediaFileUrl: (messageId: string) => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+    return `${API_URL}/messages/${messageId}/file`
+  },
 }
 
 // Users

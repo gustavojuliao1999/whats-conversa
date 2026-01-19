@@ -210,7 +210,7 @@ export async function sendMediaMessage(req: AuthenticatedRequest, res: Response)
         status: 'SENT',
         isFromMe: true,
         timestamp: new Date(),
-        mediaUrl: data.media,
+        mediaUrl: null, // Não salvar base64, buscar sob demanda via getBase64FromMediaMessage
         mediaMimeType: data.mimetype,
         mediaFileName: data.fileName,
         instanceId: conversation.instanceId,
@@ -311,7 +311,7 @@ export async function sendAudioMessage(req: AuthenticatedRequest, res: Response)
         status: 'SENT',
         isFromMe: true,
         timestamp: new Date(),
-        mediaUrl: audio,
+        mediaUrl: null, // Não salvar base64, buscar sob demanda via getBase64FromMediaMessage
         mediaMimeType: 'audio/ogg',
         instanceId: conversation.instanceId,
         contactId: conversation.contactId,
@@ -414,7 +414,7 @@ export async function markAsRead(req: AuthenticatedRequest, res: Response) {
   }
 }
 
-export async function getMediaBase64(req: AuthenticatedRequest, res: Response) {
+export async function getMediaFile(req: AuthenticatedRequest, res: Response) {
   try {
     const { messageId } = req.params;
 
@@ -450,16 +450,37 @@ export async function getMediaBase64(req: AuthenticatedRequest, res: Response) {
         message.conversation.instance.apiKey || undefined
       );
 
-      return res.json({
-        base64: mediaData.base64,
-        mimetype: mediaData.mimetype || message.mediaMimeType,
-      });
+      // Converter base64 para buffer e retornar como arquivo
+      const buffer = Buffer.from(mediaData.base64, 'base64');
+      const mimetype = mediaData.mimetype || message.mediaMimeType || 'application/octet-stream';
+
+      // Determinar extensão do arquivo
+      const extMap: Record<string, string> = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/gif': 'gif',
+        'image/webp': 'webp',
+        'video/mp4': 'mp4',
+        'audio/ogg': 'ogg',
+        'audio/ogg; codecs=opus': 'ogg',
+        'audio/mpeg': 'mp3',
+        'audio/mp4': 'm4a',
+        'application/pdf': 'pdf',
+      };
+      const ext = extMap[mimetype] || 'bin';
+      const filename = message.mediaFileName || `media_${message.id}.${ext}`;
+
+      res.setHeader('Content-Type', mimetype);
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      res.setHeader('Content-Length', buffer.length);
+
+      return res.send(buffer);
     } catch (evolutionError: any) {
       console.error('Error fetching media from Evolution API:', evolutionError);
       return res.status(500).json({ error: 'Erro ao buscar mídia da Evolution API' });
     }
   } catch (error) {
-    console.error('Get media base64 error:', error);
+    console.error('Get media file error:', error);
     return res.status(500).json({ error: 'Erro ao buscar mídia' });
   }
 }
