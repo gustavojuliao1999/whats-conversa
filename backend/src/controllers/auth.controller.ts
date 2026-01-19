@@ -19,6 +19,13 @@ const loginSchema = z.object({
 
 export async function register(req: Request, res: Response) {
   try {
+    const usersCount = await prisma.user.count();
+
+    // Block public registration after first user is created
+    if (usersCount > 0) {
+      return res.status(403).json({ error: 'Registro de novos usuários bloqueado. Contate um administrador.' });
+    }
+
     const { email, password, name } = registerSchema.parse(req.body);
 
     const existingUser = await prisma.user.findUnique({
@@ -29,7 +36,6 @@ export async function register(req: Request, res: Response) {
       return res.status(400).json({ error: 'Email já cadastrado' });
     }
 
-    const usersCount = await prisma.user.count();
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
@@ -37,7 +43,7 @@ export async function register(req: Request, res: Response) {
         email,
         password: hashedPassword,
         name,
-        role: usersCount === 0 ? 'ADMIN' : 'AGENT',
+        role: 'ADMIN',
       },
       select: {
         id: true,

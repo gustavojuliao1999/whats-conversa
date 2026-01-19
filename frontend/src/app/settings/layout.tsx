@@ -11,6 +11,7 @@ import {
   Smartphone,
   LogOut,
   ChevronLeft,
+  BarChart3,
   Menu,
   User,
 } from 'lucide-react'
@@ -59,12 +60,14 @@ export default function SettingsLayout({
   const isAdmin = user?.role === 'ADMIN'
 
   const navItems = [
-    { href: '/dashboard', icon: MessageSquare, label: 'Voltar às Conversas', back: true },
+    { href: '/dashboard', icon: MessageSquare, label: 'Conversas' },
+    { href: '/dashboard/stats', icon: BarChart3, label: 'Estatísticas' },
     { href: '/settings/profile', icon: User, label: 'Meu Perfil' },
-    { href: '/settings/instances', icon: Smartphone, label: 'Instâncias WhatsApp', adminOnly: true },
+    { href: '/settings/instances', icon: Smartphone, label: 'Instâncias', adminOnly: true },
     { href: '/settings/users', icon: Users, label: 'Usuários', adminOnly: true },
     { href: '/settings/labels', icon: Tag, label: 'Etiquetas', adminOnly: true },
   ]
+
 
   return (
     <div className="flex h-screen bg-gray-50">

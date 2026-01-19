@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   MessageSquare,
@@ -15,6 +15,7 @@ import {
   BarChart3,
   Wifi,
   WifiOff,
+  User,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -37,11 +38,15 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { user, token, isAuthenticated, logout } = useAuthStore()
   const { sidebarOpen, toggleSidebar } = useUIStore()
   const { selectedConversation, updateConversation } = useConversationStore()
   const [mounted, setMounted] = useState(false)
   const [socketConnected, setSocketConnected] = useState(false)
+
+  const isSettings = pathname.startsWith('/settings')
+  const isStatsOrConversation = pathname.startsWith('/dashboard')
 
   useEffect(() => {
     setMounted(true)
@@ -82,19 +87,14 @@ export default function DashboardLayout({
 
     const handleNewMessage = (message: any) => {
       console.log('Received message:new event:', message)
-      // Notifica se não for mensagem enviada pelo próprio usuário
       if (!message.isFromMe) {
-        // Só notifica se não estiver na conversa ou se a janela não estiver focada
         const shouldNotify = !document.hasFocus() ||
           !selectedConversation ||
           selectedConversation.id !== message.conversationId
 
-        console.log('Should notify:', shouldNotify, { hasFocus: document.hasFocus(), selectedConversation: selectedConversation?.id, messageConversation: message.conversationId })
-
         if (shouldNotify) {
           const senderName = message.contact?.pushName || message.contact?.phoneNumber || 'Nova mensagem'
           const preview = message.content || getMessagePreview(message.type)
-          console.log('Calling notifyNewMessage:', { senderName, preview })
           notifyNewMessage(senderName, preview, message.conversationId)
         }
       }
@@ -140,14 +140,26 @@ export default function DashboardLayout({
     )
   }
 
+  const isAdmin = user?.role === 'ADMIN'
+
   const navItems = [
     { href: '/dashboard', icon: MessageSquare, label: 'Conversas' },
     { href: '/dashboard/stats', icon: BarChart3, label: 'Estatísticas' },
-    { href: '/settings/instances', icon: Smartphone, label: 'Instâncias' },
-    { href: '/settings/users', icon: Users, label: 'Usuários' },
-    { href: '/settings/labels', icon: Tag, label: 'Etiquetas' },
-    { href: '/settings', icon: Settings, label: 'Configurações' },
+    { href: '/settings/profile', icon: User, label: 'Meu Perfil' },
+    { href: '/settings/instances', icon: Smartphone, label: 'Instâncias', adminOnly: true },
+    { href: '/settings/users', icon: Users, label: 'Usuários', adminOnly: true },
+    { href: '/settings/labels', icon: Tag, label: 'Etiquetas', adminOnly: true },
   ]
+
+  const getPageTitle = () => {
+    if (pathname === '/dashboard') return 'Conversas'
+    if (pathname === '/dashboard/stats') return 'Estatísticas'
+    if (pathname === '/settings/profile') return 'Meu Perfil'
+    if (pathname === '/settings/instances') return 'Instâncias'
+    if (pathname === '/settings/users') return 'Usuários'
+    if (pathname === '/settings/labels') return 'Etiquetas'
+    return 'WhatsConversa'
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -188,27 +200,21 @@ export default function DashboardLayout({
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <NotificationSettings />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleSidebar}
-              className="lg:hidden"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className="lg:hidden"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 p-4">
           {navItems.map((item) => {
             const Icon = item.icon
-            const isAdmin = user?.role === 'ADMIN'
-            const isAdminOnly = ['Usuários', 'Instâncias', 'Etiquetas'].includes(item.label)
-
-            if (isAdminOnly && !isAdmin) return null
+            if (item.adminOnly && !isAdmin) return null
 
             return (
               <Link
@@ -241,13 +247,6 @@ export default function DashboardLayout({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem asChild>
-                <Link href="/settings/profile">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Meu perfil
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-red-600">
                 <LogOut className="mr-2 h-4 w-4" />
                 Sair
@@ -273,13 +272,18 @@ export default function DashboardLayout({
             <Button variant="ghost" size="icon" onClick={toggleSidebar}>
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="font-semibold">WhatsConversa</span>
+            <span className="font-semibold">{getPageTitle()}</span>
           </div>
           <NotificationSettings />
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-hidden">{children}</div>
+        <div className={cn(
+          'flex-1 overflow-hidden',
+          isSettings && 'overflow-auto p-6'
+        )}>
+          {children}
+        </div>
       </main>
     </div>
   )
