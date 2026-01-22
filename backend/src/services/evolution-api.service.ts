@@ -12,6 +12,9 @@ interface CreateInstanceOptions {
   instanceName: string;
   qrcode?: boolean;
   integration?: 'WHATSAPP-BAILEYS' | 'WHATSAPP-BUSINESS' | 'EVOLUTION';
+  settings?: {
+    groupsIgnore?: boolean;
+  };
   webhook?: WebhookConfig;
 }
 
@@ -79,6 +82,10 @@ class EvolutionApiService {
       qrcode: options.qrcode ?? true,
       integration: options.integration ?? 'WHATSAPP-BAILEYS',
     };
+
+    if (options.settings) {
+      payload.settings = options.settings;
+    }
 
     if (options.webhook) {
       payload.webhook = {

@@ -111,9 +111,11 @@ export const useConversationStore = create<ConversationState>((set) => ({
   selectConversation: (conversation) => set({ selectedConversation: conversation, messages: [] }),
   updateConversation: (updatedConversation) =>
     set((state) => ({
-      conversations: state.conversations.map((conv) =>
-        conv.id === updatedConversation.id ? { ...conv, ...updatedConversation } : conv
-      ),
+      conversations: state.conversations.some((conv) => conv.id === updatedConversation.id)
+        ? state.conversations.map((conv) =>
+            conv.id === updatedConversation.id ? { ...conv, ...updatedConversation } : conv
+          )
+        : [{ ...updatedConversation } as Conversation, ...state.conversations],
       selectedConversation:
         state.selectedConversation?.id === updatedConversation.id
           ? { ...state.selectedConversation, ...updatedConversation }

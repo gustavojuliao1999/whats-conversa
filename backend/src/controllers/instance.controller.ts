@@ -26,6 +26,9 @@ export async function createInstance(req: AuthenticatedRequest, res: Response) {
     const evolutionResponse = await evolutionApi.createInstance({
       instanceName: name,
       qrcode: true,
+      settings: {
+        groupsIgnore: false,
+      },
       webhook: {
         url: webhookUrl,
         byEvents: false,

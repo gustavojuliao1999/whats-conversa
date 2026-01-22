@@ -154,6 +154,11 @@ export function ConversationList({ onSelectConversation }: ConversationListProps
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium truncate">
                         {conversation.contact.pushName || conversation.contact.phoneNumber}
+                        {conversation.contact.isGroup && (
+                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                            Grupo
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
                         {conversation.lastMessageAt
