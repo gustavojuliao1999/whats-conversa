@@ -21,7 +21,7 @@ export async function createInstance(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: 'Já existe uma instância com esse nome' });
     }
 
-    const webhookUrl = env.WEBHOOK_URL || `${env.FRONTEND_URL.replace(':3000', ':3001')}/api/webhook`;
+    const baseWebhookUrl = env.WEBHOOK_URL || `${env.SERVER_URL}/api/webhook`;
 
     const evolutionResponse = await evolutionApi.createInstance({
       instanceName: name,
@@ -30,7 +30,7 @@ export async function createInstance(req: AuthenticatedRequest, res: Response) {
         groupsIgnore: false,
       },
       webhook: {
-        url: webhookUrl,
+        url: baseWebhookUrl,
         byEvents: false,
         base64: true,
         events: [
