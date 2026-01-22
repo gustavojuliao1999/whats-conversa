@@ -1,9 +1,18 @@
 import { env } from '../config/env.js';
 
+interface WebhookConfig {
+  url: string;
+  byEvents?: boolean;
+  base64?: boolean;
+  headers?: Record<string, string>;
+  events?: string[];
+}
+
 interface CreateInstanceOptions {
   instanceName: string;
   qrcode?: boolean;
   integration?: 'WHATSAPP-BAILEYS' | 'WHATSAPP-BUSINESS' | 'EVOLUTION';
+  webhook?: WebhookConfig;
 }
 
 interface SendTextOptions {
@@ -65,13 +74,35 @@ class EvolutionApiService {
 
   // Instance Management
   async createInstance(options: CreateInstanceOptions) {
+    const payload: Record<string, unknown> = {
+      instanceName: options.instanceName,
+      qrcode: options.qrcode ?? true,
+      integration: options.integration ?? 'WHATSAPP-BAILEYS',
+    };
+
+    if (options.webhook) {
+      payload.webhook = {
+        url: options.webhook.url,
+        byEvents: options.webhook.byEvents ?? false,
+        base64: options.webhook.base64 ?? true,
+        headers: options.webhook.headers,
+        events: options.webhook.events ?? [
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+          'MESSAGES_DELETE',
+          'CONNECTION_UPDATE',
+          'CONTACTS_UPDATE',
+          'CHATS_UPDATE',
+          'CHATS_DELETE',
+          'PRESENCE_UPDATE',
+          'SEND_MESSAGE',
+        ],
+      };
+    }
+
     return this.request('/instance/create', {
       method: 'POST',
-      body: JSON.stringify({
-        instanceName: options.instanceName,
-        qrcode: options.qrcode ?? true,
-        integration: options.integration ?? 'WHATSAPP-BAILEYS',
-      }),
+      body: JSON.stringify(payload),
     });
   }
 

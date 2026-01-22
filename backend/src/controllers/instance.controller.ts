@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../services/prisma.service.js';
 import { evolutionApi } from '../services/evolution-api.service.js';
 import { AuthenticatedRequest } from '../types/index.js';
+import { env } from '../config/env.js';
 
 const createInstanceSchema = z.object({
   name: z.string().min(1, 'Nome da instância é obrigatório'),
@@ -20,9 +21,27 @@ export async function createInstance(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: 'Já existe uma instância com esse nome' });
     }
 
+    const webhookUrl = env.WEBHOOK_URL || `${env.FRONTEND_URL.replace(':3000', ':3001')}/api/webhook`;
+
     const evolutionResponse = await evolutionApi.createInstance({
       instanceName: name,
       qrcode: true,
+      webhook: {
+        url: webhookUrl,
+        byEvents: false,
+        base64: true,
+        events: [
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+          'MESSAGES_DELETE',
+          'CONNECTION_UPDATE',
+          'CONTACTS_UPDATE',
+          'CHATS_UPDATE',
+          'CHATS_DELETE',
+          'PRESENCE_UPDATE',
+          'SEND_MESSAGE',
+        ],
+      },
     }) as any;
 
     const instance = await prisma.instance.create({
