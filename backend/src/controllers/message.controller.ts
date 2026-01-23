@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { MessageStatus, MessageType } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../services/prisma.service.js';
 import { evolutionApi } from '../services/evolution-api.service.js';
