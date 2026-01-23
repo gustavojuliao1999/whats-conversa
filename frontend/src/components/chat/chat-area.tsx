@@ -187,6 +187,24 @@ export function ChatArea({ onBack }: ChatAreaProps) {
     }
   }
 
+  const handleSyncMessages = async () => {
+    if (!token || !selectedConversation) return
+
+    try {
+      setSending(true)
+      const result = await messagesApi.sync(token, selectedConversation.id)
+      console.log('Messages synced:', result)
+      
+      // Reload messages after sync
+      const { messages: data } = await messagesApi.list(token, selectedConversation.id)
+      setMessages(data)
+    } catch (error) {
+      console.error('Error syncing messages:', error)
+    } finally {
+      setSending(false)
+    }
+  }
+
   if (!selectedConversation) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-gray-50 text-center">
@@ -261,6 +279,15 @@ export function ChatArea({ onBack }: ChatAreaProps) {
         </div>
 
         <div className="flex items-center gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleSyncMessages}
+            disabled={sending}
+            title="Sincronizar mensagens da Evolution API"
+          >
+            <RotateCcw className={`h-5 w-5 ${sending ? 'animate-spin' : ''}`} />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">

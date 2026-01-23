@@ -272,3 +272,236 @@ export async function restartInstance(req: Request, res: Response) {
     return res.status(500).json({ error: 'Erro ao reiniciar instância' });
   }
 }
+export async function syncConversations(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const instance = await prisma.instance.findUnique({
+      where: { id },
+    });
+
+    if (!instance) {
+      return res.status(404).json({ error: 'Instância não encontrada' });
+    }
+
+    if (instance.status !== 'CONNECTED') {
+      return res.status(400).json({ error: 'Instância não está conectada' });
+    }
+
+    // Fetch all chats/conversations from Evolution API
+    const chatsResponse = await evolutionApi.findChats(
+      instance.name,
+      instance.apiKey || undefined
+    ) as any;
+
+    // The API returns an array directly
+    const chats = Array.isArray(chatsResponse) ? chatsResponse : (chatsResponse?.chats || []);
+
+    if (!chats || chats.length === 0) {
+      return res.status(200).json({ 
+        message: 'Nenhuma conversa para sincronizar',
+        synced: 0 
+      });
+    }
+
+    let syncedConversations = 0;
+    let syncedMessages = 0;
+
+    // Process each chat
+    for (const chat of chats) {
+      try {
+        // Extract phone number (clean all suffixes)
+        const cleanPhoneNumber = chat.remoteJid
+          .replace('@s.whatsapp.net', '')
+          .replace('@g.us', '')
+          .replace('@lid', '')
+          .replace('@broadcast', '');
+
+        // Get or create contact - try by remoteJid first, then by phoneNumber
+        let contact = await prisma.contact.findFirst({
+          where: {
+            remoteJid: chat.remoteJid,
+            instanceId: instance.id,
+          },
+        });
+
+        // If not found by remoteJid and it's not a group, try to find by phone number
+        if (!contact && !chat.remoteJid.endsWith('@g.us')) {
+          contact = await prisma.contact.findFirst({
+            where: {
+              phoneNumber: cleanPhoneNumber,
+              instanceId: instance.id,
+              isGroup: false,
+            },
+          });
+          
+          // If found by phone number, update the remoteJid to the new one
+          if (contact) {
+            contact = await prisma.contact.update({
+              where: { id: contact.id },
+              data: { remoteJid: chat.remoteJid },
+            });
+          }
+        }
+
+        if (!contact) {
+          contact = await prisma.contact.create({
+            data: {
+              remoteJid: chat.remoteJid,
+              phoneNumber: cleanPhoneNumber,
+              pushName: chat.pushName || '',
+              profilePic: chat.profilePicUrl || null,
+              isGroup: chat.remoteJid.endsWith('@g.us'),
+              instanceId: instance.id,
+            },
+          });
+        }
+
+        // Get or create conversation
+        let conversation = await prisma.conversation.findFirst({
+          where: {
+            contactId: contact.id,
+            instanceId: instance.id,
+          },
+        });
+
+        if (!conversation) {
+          conversation = await prisma.conversation.create({
+            data: {
+              contactId: contact.id,
+              instanceId: instance.id,
+              status: 'OPEN',
+              unreadCount: chat.unreadCount || 0,
+              lastMessage: '',
+              lastMessageAt: new Date(),
+            },
+          });
+          syncedConversations++;
+        }
+
+        // Fetch messages for this chat
+        const messages = await evolutionApi.findMessages(
+          instance.name,
+          {
+            where: {
+              key: { remoteJid: chat.remoteJid },
+            },
+          },
+          instance.apiKey || undefined
+        ) as any;
+        console.log(`Fetched ${messages?.messages?.records?.length || 0} messages for chat ${chat.remoteJid}`);
+        console.log(messages);
+
+        if (messages?.messages?.records) {
+          for (const msg of messages.messages.records) {
+            // Check if message already exists
+            const existingMessage = await prisma.message.findFirst({
+              where: {
+                messageId: msg.key?.id,
+                conversationId: conversation.id,
+              },
+            });
+
+            if (existingMessage) {
+              continue;
+            }
+
+            // Determine message type
+            let messageType: string = 'TEXT';
+            if (msg.message?.imageMessage) messageType = 'IMAGE';
+            else if (msg.message?.videoMessage) messageType = 'VIDEO';
+            else if (msg.message?.audioMessage) messageType = 'AUDIO';
+            else if (msg.message?.documentMessage) messageType = 'DOCUMENT';
+            else if (msg.message?.stickerMessage) messageType = 'STICKER';
+            else if (msg.message?.locationMessage) messageType = 'LOCATION';
+            else if (msg.message?.contactMessage) messageType = 'CONTACT';
+            else if (msg.message?.reactionMessage) messageType = 'REACTION';
+
+            // Extract content
+            let content = '';
+            if (msg.message?.conversation) {
+              content = msg.message.conversation;
+            } else if (msg.message?.extendedTextMessage) {
+              content = msg.message.extendedTextMessage.text;
+            } else if (msg.message?.imageMessage?.caption) {
+              content = msg.message.imageMessage.caption;
+            } else if (msg.message?.videoMessage?.caption) {
+              content = msg.message.videoMessage.caption;
+            } else if (msg.message?.documentMessage?.fileName) {
+              content = msg.message.documentMessage.fileName;
+            }
+
+            // Determine if message is from the user or from me
+            const isFromMe = msg.key?.fromMe || false;
+
+            // Map status
+            let status: string = 'DELIVERED';
+            if (msg.status === 1) status = 'SENT';
+            else if (msg.status === 2) status = 'DELIVERED';
+            else if (msg.status === 3) status = 'READ';
+
+            try {
+              await prisma.message.create({
+                data: {
+                  messageId: msg.key?.id,
+                  content: content || null,
+                  type: messageType as any,
+                  status: status as any,
+                  isFromMe,
+                  timestamp: new Date(msg.messageTimestamp * 1000),
+                  mediaMimeType: msg.message?.imageMessage?.mimetype || 
+                                msg.message?.videoMessage?.mimetype ||
+                                msg.message?.audioMessage?.mimetype ||
+                                msg.message?.documentMessage?.mimetype,
+                  mediaFileName: msg.message?.documentMessage?.fileName,
+                  instanceId: instance.id,
+                  contactId: contact.id,
+                  conversationId: conversation.id,
+                },
+              });
+              syncedMessages++;
+            } catch (error) {
+              console.warn(`Error saving message ${msg.key?.id}:`, error);
+            }
+          }
+
+          // Update conversation with last message
+          if (messages.messages.records.length > 0) {
+            const lastMessage = messages.messages.records[0];
+            let lastMessageContent = '';
+            
+            if (lastMessage.message?.conversation) {
+              lastMessageContent = lastMessage.message.conversation;
+            } else if (lastMessage.message?.extendedTextMessage?.text) {
+              lastMessageContent = lastMessage.message.extendedTextMessage.text;
+            } else {
+              lastMessageContent = '[mensagem de mídia]';
+            }
+
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: {
+                lastMessage: lastMessageContent,
+                lastMessageAt: new Date(lastMessage.messageTimestamp * 1000),
+              },
+            });
+          }
+        }
+      } catch (error) {
+        console.warn(`Error processing chat ${chat.remoteJid}:`, error);
+        // Continue with next chat if one fails
+      }
+    }
+
+    return res.json({ 
+      message: `Sincronização concluída: ${syncedConversations} conversas e ${syncedMessages} mensagens`,
+      synced: {
+        conversations: syncedConversations,
+        messages: syncedMessages,
+      }
+    });
+  } catch (error) {
+    console.error('Sync conversations error:', error);
+    return res.status(500).json({ error: 'Erro ao sincronizar conversas' });
+  }
+}

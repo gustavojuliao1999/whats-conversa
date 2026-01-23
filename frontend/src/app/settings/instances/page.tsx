@@ -40,6 +40,7 @@ export default function InstancesPage() {
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [connectingId, setConnectingId] = useState<string | null>(null)
   const [checkingStatusId, setCheckingStatusId] = useState<string | null>(null)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
 
   useEffect(() => {
     loadInstances()
@@ -133,6 +134,22 @@ export default function InstancesPage() {
       console.error('Error checking status:', error)
     } finally {
       setCheckingStatusId(null)
+    }
+  }
+
+  const handleSyncConversations = async (instance: Instance) => {
+    if (!token) return
+    if (!confirm(`Sincronizar conversas e mensagens de "${instance.name}"?`)) return
+
+    try {
+      setSyncingId(instance.id)
+      const result = await instancesApi.sync(token, instance.id)
+      alert(`${result.message}\nConversas: ${result.synced.conversations}\nMensagens: ${result.synced.messages}`)
+      loadInstances()
+    } catch (error: any) {
+      alert(error.message || 'Erro ao sincronizar')
+    } finally {
+      setSyncingId(null)
     }
   }
 
@@ -331,6 +348,35 @@ export default function InstancesPage() {
                     checkingStatusId === instance.id && "animate-spin"
                   )} />
                 </Button>
+
+                {/* Botão Sincronizar Conversas */}
+                {instance.status === 'CONNECTED' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSyncConversations(instance)}
+                    disabled={syncingId === instance.id}
+                  >
+                    {syncingId === instance.id ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <svg
+                        className="mr-2 h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                    )}
+                    Sincronizar Mensagens
+                  </Button>
+                )}
 
                 {instance.status === 'CONNECTED' ? (
                   <Button

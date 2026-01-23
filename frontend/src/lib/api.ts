@@ -110,6 +110,12 @@ export const instancesApi = {
       method: 'POST',
       token,
     }),
+
+  sync: (token: string, id: string) =>
+    fetchApi<{ message: string; synced: { conversations: number; messages: number } }>(`/instances/${id}/sync`, {
+      method: 'POST',
+      token,
+    }),
 }
 
 // Conversations
@@ -210,6 +216,13 @@ export const messagesApi = {
       method: 'POST',
       token,
     }),
+
+  sync: (token: string, conversationId: string) =>
+    fetchApi<{ message: string; synced: number }>(`/conversations/${conversationId}/messages/sync`, {
+      method: 'POST',
+      token,
+    }),
+
   getMediaBase64: (token: string, messageId: string) =>
     fetchApi<{ base64: string; mimetype: string }>(`/messages/${messageId}/media`, {
       token,

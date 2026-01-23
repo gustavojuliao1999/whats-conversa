@@ -519,3 +519,152 @@ export async function sendTyping(req: AuthenticatedRequest, res: Response) {
     return res.status(500).json({ error: 'Erro ao enviar status' });
   }
 }
+
+export async function syncMessages(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { conversationId } = req.params;
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        contact: true,
+        instance: true,
+      },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    if (!conversation.instance || conversation.instance.status !== 'CONNECTED') {
+      return res.status(400).json({ error: 'Instância não está conectada' });
+    }
+
+    // Fetch messages from Evolution API
+    const evolutionMessages = await evolutionApi.findMessages(
+      conversation.instance.name,
+      {
+        where: {
+          key: { remoteJid: conversation.contact.remoteJid },
+        },
+      },
+      conversation.instance.apiKey || undefined
+    ) as any;
+
+    if (!evolutionMessages || !evolutionMessages.messages) {
+      return res.status(200).json({ 
+        message: 'Nenhuma mensagem para sincronizar',
+        synced: 0 
+      });
+    }
+
+    let synced = 0;
+
+    // Process and save messages
+    for (const evMsg of evolutionMessages.messages) {
+      // Check if message already exists
+      const existingMessage = await prisma.message.findFirst({
+        where: {
+          messageId: evMsg.key?.id,
+          conversationId,
+        },
+      });
+
+      if (existingMessage) {
+        continue; // Skip if already exists
+      }
+
+      // Determine message type
+      let messageType: MessageType = 'TEXT';
+      if (evMsg.message?.imageMessage) messageType = 'IMAGE';
+      else if (evMsg.message?.videoMessage) messageType = 'VIDEO';
+      else if (evMsg.message?.audioMessage) messageType = 'AUDIO';
+      else if (evMsg.message?.documentMessage) messageType = 'DOCUMENT';
+      else if (evMsg.message?.stickerMessage) messageType = 'STICKER';
+      else if (evMsg.message?.locationMessage) messageType = 'LOCATION';
+      else if (evMsg.message?.contactMessage) messageType = 'CONTACT';
+      else if (evMsg.message?.reactionMessage) messageType = 'REACTION';
+
+      // Extract content
+      let content = '';
+      if (evMsg.message?.conversation) {
+        content = evMsg.message.conversation;
+      } else if (evMsg.message?.extendedTextMessage) {
+        content = evMsg.message.extendedTextMessage.text;
+      } else if (evMsg.message?.imageMessage?.caption) {
+        content = evMsg.message.imageMessage.caption;
+      } else if (evMsg.message?.videoMessage?.caption) {
+        content = evMsg.message.videoMessage.caption;
+      } else if (evMsg.message?.documentMessage?.fileName) {
+        content = evMsg.message.documentMessage.fileName;
+      }
+
+      // Determine if message is from the user or from me
+      const isFromMe = evMsg.key?.fromMe || false;
+
+      // Map Evolution message status to our MessageStatus
+      let status: MessageStatus = 'DELIVERED';
+      if (evMsg.status === 1) status = 'SENT';
+      else if (evMsg.status === 2) status = 'DELIVERED';
+      else if (evMsg.status === 3) status = 'READ';
+
+      try {
+        const newMessage = await prisma.message.create({
+          data: {
+            messageId: evMsg.key?.id,
+            content: content || null,
+            type: messageType,
+            status,
+            isFromMe,
+            timestamp: new Date(evMsg.messageTimestamp * 1000),
+            mediaMimeType: evMsg.message?.imageMessage?.mimetype || 
+                          evMsg.message?.videoMessage?.mimetype ||
+                          evMsg.message?.audioMessage?.mimetype ||
+                          evMsg.message?.documentMessage?.mimetype,
+            mediaFileName: evMsg.message?.documentMessage?.fileName,
+            instanceId: conversation.instanceId,
+            contactId: conversation.contactId,
+            conversationId: conversation.id,
+          },
+        });
+
+        synced++;
+      } catch (error) {
+        console.warn(`Error saving message ${evMsg.key?.id}:`, error);
+        // Continue with next message if one fails
+      }
+    }
+
+    // Update conversation lastMessage if messages were synced
+    if (synced > 0) {
+      const lastMessage = await prisma.message.findFirst({
+        where: { conversationId },
+        orderBy: { timestamp: 'desc' },
+      });
+
+      if (lastMessage) {
+        await prisma.conversation.update({
+          where: { id: conversationId },
+          data: {
+            lastMessage: lastMessage.content || `[${lastMessage.type}]`,
+            lastMessageAt: lastMessage.timestamp,
+          },
+        });
+      }
+    }
+
+    const io = getIO();
+    io.to(`conversation:${conversationId}`).emit('messages:synced', {
+      conversationId,
+      synced,
+    });
+
+    return res.json({ 
+      message: `${synced} mensagens sincronizadas com sucesso`,
+      synced 
+    });
+  } catch (error) {
+    console.error('Sync messages error:', error);
+    return res.status(500).json({ error: 'Erro ao sincronizar mensagens' });
+  }
+}

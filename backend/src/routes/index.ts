@@ -54,7 +54,7 @@ router.post('/instances/:id/connect', authMiddleware, instanceController.connect
 router.get('/instances/:id/status', authMiddleware, instanceController.getConnectionState);
 router.post('/instances/:id/logout', authMiddleware, adminMiddleware, instanceController.logoutInstance);
 router.post('/instances/:id/restart', authMiddleware, adminMiddleware, instanceController.restartInstance);
-
+router.post('/instances/:id/sync', authMiddleware, instanceController.syncConversations);
 // Conversation routes
 router.get('/conversations', authMiddleware, conversationController.listConversations);
 router.get('/conversations/stats', authMiddleware, conversationController.getConversationStats);
@@ -72,6 +72,7 @@ router.post('/conversations/:conversationId/messages/text', authMiddleware, mess
 router.post('/conversations/:conversationId/messages/media', authMiddleware, messageController.sendMediaMessage);
 router.post('/conversations/:conversationId/messages/audio', authMiddleware, messageController.sendAudioMessage);
 router.post('/conversations/:conversationId/messages/read', authMiddleware, messageController.markAsRead);
+router.post('/conversations/:conversationId/messages/sync', authMiddleware, messageController.syncMessages);
 router.post('/conversations/:conversationId/typing', authMiddleware, messageController.sendTyping);
 router.get('/messages/:messageId/file', messageController.getMediaFile);
 
